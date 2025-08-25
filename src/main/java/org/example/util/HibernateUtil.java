@@ -1,10 +1,12 @@
 package org.example.util;
 
+import org.example.exception.UserException;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.Metadata;
 import org.hibernate.boot.MetadataSources;
 import org.hibernate.boot.registry.StandardServiceRegistry;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
+import org.hibernate.service.spi.ServiceException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -14,12 +16,15 @@ public class HibernateUtil {
     private static SessionFactory sessionFactory;
 
     static {
-        try {
-            logger.info("Initializing Hibernate from hibernate.cfg.xml...");
+        initializeSessionFactory();
+    }
 
-            // Создаем StandardServiceRegistry из конфигурационного файла
+    private static void initializeSessionFactory() {
+        try {
+            logger.info("Initializing Hibernate SessionFactory...");
+
             StandardServiceRegistry standardRegistry = new StandardServiceRegistryBuilder()
-                    .configure("hibernate.cfg.xml") // Ищет в classpath
+                    .configure("hibernate.cfg.xml")
                     .build();
 
             Metadata metadata = new MetadataSources(standardRegistry)
@@ -27,47 +32,72 @@ public class HibernateUtil {
                     .build();
 
             sessionFactory = metadata.getSessionFactoryBuilder().build();
-            logger.info("Hibernate SessionFactory created successfully from hibernate.cfg.xml");
+            logger.info("Hibernate SessionFactory created successfully");
 
+        } catch (ServiceException e) {
+            handleServiceException(e);
         } catch (Exception e) {
-            logger.error("Failed to create Hibernate SessionFactory from hibernate.cfg.xml", e);
-            System.err.println("Error: Could not load hibernate.cfg.xml from classpath");
-            System.err.println("Make sure the file is in src/main/resources/ directory");
-            throw new ExceptionInInitializerError("Could not initialize Hibernate: " + e.getMessage());
+            handleGenericException(e);
         }
     }
 
+    private static void handleServiceException(ServiceException e) {
+        String errorMessage = "Hibernate service configuration error: " + e.getMessage();
+        logger.error(errorMessage, e);
+
+        // Проверяем специфичные ошибки подключения к БД
+        if (e.getMessage().contains("Connection") || e.getMessage().contains("JDBC")) {
+            throw new UserException.DatabaseConnectionException(
+                    "Cannot connect to database. Please check: " +
+                            "\n1. Is PostgreSQL running?" +
+                            "\n2. Is database 'userdb' created?" +
+                            "\n3. Are connection settings correct in hibernate.cfg.xml?", e);
+        }
+
+        throw new UserException(errorMessage, e);
+    }
+
+    private static void handleGenericException(Exception e) {
+        String errorMessage = "Failed to initialize Hibernate: " + e.getMessage();
+        logger.error(errorMessage, e);
+
+        // Обработка специфичных ошибок конфигурации
+        if (e.getMessage().contains("cfg.xml")) {
+            throw new UserException(
+                    "Hibernate configuration file not found. " +
+                            "Make sure hibernate.cfg.xml is in src/main/resources/", e);
+        }
+
+        throw new UserException(errorMessage, e);
+    }
+
     public static SessionFactory getSessionFactory() {
-        if (sessionFactory == null) {
-            throw new IllegalStateException("Hibernate SessionFactory is not initialized");
+        if (sessionFactory == null || sessionFactory.isClosed()) {
+            throw new UserException("Hibernate SessionFactory is not initialized or closed");
         }
         return sessionFactory;
     }
 
     public static void shutdown() {
-        if (sessionFactory != null) {
-            sessionFactory.close();
-            logger.info("Hibernate SessionFactory closed");
+        try {
+            if (sessionFactory != null && !sessionFactory.isClosed()) {
+                sessionFactory.close();
+                logger.info("Hibernate SessionFactory closed successfully");
+            }
+        } catch (Exception e) {
+            logger.error("Error closing Hibernate SessionFactory", e);
+            throw new UserException("Failed to shutdown Hibernate", e);
         }
     }
 
-    // Метод для проверки, что конфигурационный файл загружается
-    public static void testConfigLoading() {
+    public static boolean isConnected() {
         try {
-            // Попытка загрузить ресурс напрямую
-            ClassLoader classLoader = HibernateUtil.class.getClassLoader();
-            java.net.URL configUrl = classLoader.getResource("hibernate.cfg.xml");
-
-            if (configUrl != null) {
-                logger.info("Found hibernate.cfg.xml at: {}", configUrl.getPath());
-            } else {
-                logger.error("hibernate.cfg.xml not found in classpath!");
-                throw new RuntimeException("hibernate.cfg.xml not found in classpath");
-            }
-
+            return sessionFactory != null &&
+                    !sessionFactory.isClosed() &&
+                    sessionFactory.openSession().isConnected();
         } catch (Exception e) {
-            logger.error("Error testing config loading", e);
-            throw e;
+            logger.warn("Database connection check failed", e);
+            return false;
         }
     }
 }

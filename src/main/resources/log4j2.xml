@@ -7,19 +7,29 @@
         <File name="File" fileName="logs/user-service.log">
             <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
         </File>
+        <File name="ErrorFile" fileName="logs/error.log">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n%throwable{full}"/>
+            <ThresholdFilter level="ERROR" onMatch="ACCEPT" onMismatch="DENY"/>
+        </File>
     </Appenders>
     <Loggers>
         <Root level="info">
             <AppenderRef ref="Console"/>
             <AppenderRef ref="File"/>
+            <AppenderRef ref="ErrorFile"/>
         </Root>
         <Logger name="org.hibernate" level="warn" additivity="false">
             <AppenderRef ref="Console"/>
+            <AppenderRef ref="File"/>
+            <AppenderRef ref="ErrorFile"/>
+        </Logger>
+        <Logger name="org.hibernate.SQL" level="debug" additivity="false">
             <AppenderRef ref="File"/>
         </Logger>
         <Logger name="org.example" level="debug" additivity="false">
             <AppenderRef ref="Console"/>
             <AppenderRef ref="File"/>
+            <AppenderRef ref="ErrorFile"/>
         </Logger>
     </Loggers>
 </Configuration>
