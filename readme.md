@@ -465,7 +465,7 @@ mvn test jacoco:report
 Если integration-тесты падают:
 ```bash
 # Запустите только unit-тесты для проверки
-mvn test -Dtest="*Test" -DfailIfNoTests=false
+mvn test -Dtest=!**/UserDaoIntegrationTest -DfailIfNoTests=false
 
 # Проверьте логи Docker
 docker logs <container_id>
